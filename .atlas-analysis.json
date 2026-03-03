@@ -1,0 +1,68 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "Bot Planning",
+  "projectDescription": "A Discord bot that retrieves CNAM class schedules from Google Sheets and displays them as formatted images in Discord.",
+  "theme": "aspen",
+  "primaryColor": "#5865F2",
+  "lightColor": "#7289DA",
+  "darkColor": "#4752C4",
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "introduction",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Configuration",
+        "pages": [
+          "configuration/environment-variables",
+          "configuration/google-sheets-setup",
+          "configuration/discord-bot-setup"
+        ]
+      },
+      {
+        "group": "Deployment",
+        "pages": [
+          "deployment/docker",
+          "deployment/docker-compose"
+        ]
+      },
+      {
+        "group": "Usage",
+        "pages": [
+          "usage/commands",
+          "usage/schedule-format"
+        ]
+      },
+      {
+        "group": "Development",
+        "pages": [
+          "development/architecture",
+          "development/customization",
+          "development/troubleshooting"
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Discord slash command integration for schedule retrieval",
+    "Google Sheets CSV data source with automatic parsing",
+    "Visual schedule generation with color-coded course blocks",
+    "Week-based schedule display with specific date queries",
+    "Automated color generation for course subjects",
+    "Docker containerization for easy deployment"
+  ],
+  "publicApiSurface": [
+    "/planning - Display current week's schedule",
+    "/planning date:DD-MM-YYYY - Display schedule for specific date",
+    "get_week_image_for_date(ref_date) - Generate schedule image for date",
+    "get_current_week_image() - Generate current week schedule image",
+    "extract_month_df(df_raw, year, month) - Extract month data from CSV",
+    "remplacer_code_matiere(code) - Map course codes to full names",
+    "couleur_matiere(code) - Get color for course code",
+    "generer_couleur_automatique(code) - Auto-generate pastel color"
+  ]
+}
