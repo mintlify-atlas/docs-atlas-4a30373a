@@ -1,0 +1,368 @@
+---
+title: Customization Guide
+description: Learn how to customize course mappings, colors, schedule formats, and other bot behaviors
+---
+
+## Customizing Course Mappings
+
+### MATIERE_MAP Dictionary
+
+**Location:** bot.py:22-35
+
+The `MATIERE_MAP` dictionary maps course codes to human-readable names. This is the primary customization point for your institution's courses.
+
+```python
+MATIERE_MAP = {
+    "UTC501": "Maths",
+    "UTC502": "OS",
+    "UTC503": "Programmation",
+    "UTC504 - IM": "SI et BD",
+    "UTC505": "Réseaux",
+    "GDN100": "Gestion",
+    "SEC102-FC": "Cybersécurité",
+    "SEC102-AD": "Cybersécurité",
+    "NFP121": "Programmation avancée",
+    "NFP107": "SQL",
+    "RSX102": "Applications réseaux",
+    "ANG320": "Anglais",
+}
+```
+
+### Adding New Course Codes
+
+To add a new course:
+
+1. **Identify the course code** used in your Google Sheets CSV
+2. **Add an entry** to the `MATIERE_MAP` dictionary
+3. **Restart the bot** for changes to take effect
+
+**Example:**
+
+```python
+MATIERE_MAP = {
+    # ... existing courses ...
+    "NFP101": "Architecture des Ordinateurs",  # New course
+    "GLG105": "Mathématiques pour l'informatique",  # New course
+}
+```
+
+<Tip>
+Course codes in your CSV must **exactly match** the keys in `MATIERE_MAP`, including spaces, hyphens, and capitalization. Use the exact format: `"CODE": "Display Name"`
+</Tip>
+
+### Course Code Format
+
+The `remplacer_code_matiere()` function (bot.py:53-62) processes codes as follows:
+
+- **Mapped codes**: Displayed as `"CODE : Name"` (e.g., "UTC501 : Maths")
+- **Unmapped codes**: Displayed as-is from the CSV
+- **Semester markers**: Codes starting with "SEM" are hidden
+- **Empty cells**: Shown as "Hors jour de cours"
+
+```python
+def remplacer_code_matiere(code):
+    if pd.isna(code):
+        return ""
+    code = str(code).strip()
+    
+    if code in MATIERE_MAP:
+        return f"{code} : {MATIERE_MAP[code]}"  # Format: "CODE : Name"
+    if code.startswith("SEM"):
+        return ""  # Hide semester markers
+    return code  # Display unknown codes as-is
+```
+
+## Color Customization
+
+### Automatic Color Generation
+
+By default, the bot **automatically generates** unique pastel colors for each course using MD5 hashing (bot.py:68-86). This ensures consistent colors without manual configuration.
+
+**How it works:**
+
+```python
+def generer_couleur_automatique(code):
+    # 1. Hash the course code
+    hash_obj = hashlib.md5(code.encode())
+    hash_hex = hash_obj.hexdigest()
+    
+    # 2. Extract RGB from hash
+    r = int(hash_hex[0:2], 16)
+    g = int(hash_hex[2:4], 16)
+    b = int(hash_hex[4:6], 16)
+    
+    # 3. Convert to pastel (blend with white)
+    r = int(r * 0.5 + 255 * 0.5)
+    g = int(g * 0.5 + 255 * 0.5)
+    b = int(b * 0.5 + 255 * 0.5)
+    
+    return f"#{r:02x}{g:02x}{b:02x}"
+```
+
+### Manual Color Override
+
+**Location:** bot.py:65
+
+To assign specific colors to courses, populate the `matiere_colors` dictionary:
+
+```python
+matiere_colors = {
+    "UTC501": "#FFB6C1",  # Light pink for Maths
+    "UTC502": "#ADD8E6",  # Light blue for OS
+    "UTC503": "#90EE90",  # Light green for Programming
+    "GDN100": "#FFD700",  # Gold for Management
+    "ANG320": "#DDA0DD",  # Plum for English
+}
+```
+
+**Color lookup order** (bot.py:89-94):
+1. Check `matiere_colors` dictionary first
+2. If not found, generate automatic color
+
+```python
+def couleur_matiere(code):
+    code_seul = str(code).split(" :")[0].strip()
+    return matiere_colors.get(code_seul, generer_couleur_automatique(code_seul))
+```
+
+<Tip>
+Use hex color codes (e.g., `#FFB6C1`) for manual colors. The bot automatically determines whether to use black or white text based on background brightness using the `couleur_texte()` function.
+</Tip>
+
+### Text Color Calculation
+
+The bot automatically selects text color for readability (bot.py:97-107):
+
+```python
+def couleur_texte(couleur_hex):
+    # Convert hex to RGB
+    r, g, b = tuple(int(couleur_hex[i:i+2], 16) for i in (0, 2, 4))
+    
+    # Calculate luminosity (standard formula)
+    luminosite = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+    
+    # Dark background → white text, light background → black text
+    return "#FFFFFF" if luminosite < 0.5 else "#000000"
+```
+
+## Schedule Format Customization
+
+### CSV Structure Requirements
+
+The bot expects a specific CSV format:
+
+**CSV Reading Configuration** (bot.py:192):
+```python
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32)
+```
+
+- **skiprows=3**: Adjust if your CSV has more/fewer header rows
+- **nrows=32**: Adjust to read more days if needed (max days in any month)
+
+**Expected column structure per month:**
+- Column 1: Day abbreviations (L, M, Me, J, V, S, D)
+- Column 2: Morning classes
+- Column 3: Afternoon classes
+
+### Day Abbreviation Mapping
+
+**Location:** bot.py:284-312
+
+The `map_jour_with_order()` function converts abbreviated day names:
+
+```python
+def map_jour_with_order(jours):
+    # Maps:
+    # L → Lundi
+    # M → Mardi (after Lundi) or Mercredi (otherwise)
+    # Me → Mercredi
+    # J → Jeudi
+    # V → Vendredi
+    # S → Samedi
+    # D → Dimanche
+```
+
+<Tip>
+The function uses **context-aware mapping** for "M": if the previous day was Monday ("Lundi"), it maps to Tuesday ("Mardi"); otherwise, it maps to Wednesday ("Mercredi"). This handles ambiguous abbreviations intelligently.
+</Tip>
+
+### Month Name Mapping
+
+**Location:** bot.py:37-42
+
+The `MOIS_MAPPING` dictionary connects English month names to French CSV headers:
+
+```python
+MOIS_MAPPING = {
+    "january": "JANVIER",
+    "february": "FÉVRIER",
+    "march": "MARS",
+    "april": "AVRIL",
+    "may": "MAI",
+    "june": "JUIN",
+    "july": "JUILLET",
+    "august": "AOÛT",
+    "september": "SEPTEMBRE",
+    "october": "OCTOBRE",
+    "november": "NOVEMBRE",
+    "december": "DECEMBRE"
+}
+```
+
+**To customize for different languages:**
+- Change the **values** to match your CSV month headers
+- Keep the **keys** in lowercase English (used by Python's datetime)
+
+## Image Format Customization
+
+### Table Appearance
+
+**Location:** bot.py:248-268
+
+Customize the generated schedule image:
+
+```python
+# Figure size
+fig_height = max(1.5, 0.6 * len(df_semaine))  # Height scales with row count
+fig, ax = plt.subplots(figsize=(6, fig_height))  # Width: 6 inches
+
+# Table properties
+table = ax.table(
+    cellText=df_semaine[["Jour", "Matin", "Après-midi"]].values,
+    colLabels=["Jour", "Matin", "Après-midi"],
+    cellLoc="center",  # Text alignment
+    colWidths=[0.2, 0.4, 0.4],  # Column width ratios
+    loc="center"
+)
+
+# Font styling
+table.auto_set_font_size(False)
+table.set_fontsize(10)  # Change font size here
+table.scale(1, 1.3)  # Scale: (width, height)
+```
+
+**Customization options:**
+- **figsize**: Change image dimensions `(width, height)` in inches
+- **colWidths**: Adjust column width ratios (must sum to 1.0)
+- **set_fontsize**: Change text size (default: 10)
+- **scale**: Adjust cell spacing (horizontal, vertical)
+- **colLabels**: Change column headers
+
+### Weekend Handling
+
+**Location:** bot.py:222
+
+By default, weekends are removed from the schedule:
+
+```python
+df_semaine = df_semaine[~df_semaine["Jour"].isin(["Samedi", "Dimanche"])]
+```
+
+**To include weekends**, comment out or remove this line.
+
+### Holiday Detection
+
+**Location:** bot.py:218-219
+
+The bot marks entire days as holidays if the morning is marked "FERIE":
+
+```python
+mask_ferie = df_semaine["Matin"].astype(str).str.strip().str.upper() == "FERIE"
+df_semaine.loc[mask_ferie, "Après-midi"] = "FERIE"
+```
+
+**To customize:**
+- Change `"FERIE"` to your CSV's holiday marker
+- Add additional holiday keywords (e.g., "HOLIDAY", "CLOSED")
+
+## Date Format Customization
+
+### Input Date Format
+
+**Location:** bot.py:110-112
+
+The `/planning` command expects DD-MM-YYYY format:
+
+```python
+def parse_iso_date(s: str):
+    return datetime.strptime(s, "%d-%m-%Y").date()
+```
+
+**To change the format**, modify the format string:
+- `"%Y-%m-%d"` for YYYY-MM-DD (ISO format)
+- `"%m/%d/%Y"` for MM/DD/YYYY (US format)
+- `"%d.%m.%Y"` for DD.MM.YYYY (European format)
+
+Remember to update the command description (bot.py:319) to match.
+
+## Environment Configuration
+
+### Required Variables
+
+**Location:** bot.py:18-19
+
+Create a `.env` file in the bot's directory:
+
+```bash
+# Discord Bot Token (from Discord Developer Portal)
+DISCORD_TOKEN=your_bot_token_here
+
+# Path to CSV file (local path or URL)
+EDT_PATH=/path/to/schedule.csv
+# Or use a URL:
+# EDT_PATH=https://docs.google.com/spreadsheets/d/.../export?format=csv
+```
+
+<Tip>
+For Google Sheets, use the **File → Download → Comma-separated values (.csv)** URL. Make sure the sheet is published or publicly accessible.
+</Tip>
+
+## Advanced Customizations
+
+### Changing Command Prefix
+
+**Location:** bot.py:49
+
+To use a different command prefix (default is `/`):
+
+```python
+bot = commands.Bot(command_prefix="!", intents=intents)  # Use ! instead of /
+```
+
+### Empty Cell Handling
+
+**Location:** bot.py:232-236
+
+Customize how empty schedule slots are displayed:
+
+```python
+df_semaine[["Matin", "Après-midi"]] = (
+    df_semaine[["Matin", "Après-midi"]]
+    .fillna("Hors jour de cours")  # Change this text
+    .replace("", "Hors jour de cours")
+    .replace("nan", "Hors jour de cours")
+)
+```
+
+**Examples:**
+- `"No Class"` for English
+- `"Libre"` for French "Free time"
+- `"---"` for minimal display
+
+### ISO Week Behavior
+
+**Location:** bot.py:184-185
+
+By default, weekend dates are shifted to the following week:
+
+```python
+if ref_dt.weekday() >= 5:  # Saturday=5, Sunday=6
+    ref_dt += timedelta(days=(7 - ref_dt.weekday()))
+```
+
+**To show the previous week instead**, change to:
+
+```python
+if ref_dt.weekday() >= 5:
+    ref_dt -= timedelta(days=(ref_dt.weekday() - 4))  # Go to Friday
+```

@@ -1,0 +1,559 @@
+---
+title: Troubleshooting Guide
+description: Common issues and solutions for Bot Planning including CSV errors, date parsing, Discord permissions, and debugging tips
+---
+
+## Common Issues
+
+<AccordionGroup>
+
+<Accordion title="Bot doesn't respond to /planning command">
+
+### Symptoms
+- Slash command doesn't appear when typing `/`
+- Bot is online but commands are not registered
+
+### Causes & Solutions
+
+**1. Commands not synced**
+
+Check the bot startup logs (bot.py:362-369):
+
+```python
+@bot.event
+async def on_ready():
+    print(f"✅ Bot connecté en tant que {bot.user}")
+    await bot.tree.sync()  # This syncs slash commands
+    print("✅ Slash commands synchronisées")
+```
+
+**Solutions:**
+- Restart the bot and check for "✅ Slash commands synchronisées" message
+- Wait up to 1 hour for Discord to propagate commands globally
+- For faster testing, sync to a specific guild:
+  ```python
+  guild = discord.Object(id=YOUR_GUILD_ID)
+  bot.tree.copy_global_to(guild=guild)
+  await bot.tree.sync(guild=guild)
+  ```
+
+**2. Missing bot permissions**
+
+Required Discord permissions:
+- `applications.commands` scope (for slash commands)
+- `Send Messages` permission in target channels
+- `Attach Files` permission (for sending schedule images)
+
+**3. Bot intents not enabled**
+
+Verify bot.py:48 has appropriate intents:
+```python
+intents = discord.Intents.default()
+```
+
+</Accordion>
+
+<Accordion title="CSV format errors">
+
+### Symptoms
+- Error: "Mois {month} non trouvé dans le fichier CSV"
+- Schedule shows wrong data or empty cells
+
+### Causes & Solutions
+
+**1. Month name mismatch**
+
+The bot searches for French month names in the CSV header (bot.py:115-120):
+
+```python
+def find_month_col_index(df: pd.DataFrame, mois_cle: str):
+    header_row = df.iloc[0].astype(str)
+    for i, val in enumerate(header_row):
+        if pd.notna(val) and mois_cle in str(val):
+            return i
+    raise ValueError(f"Mois {mois_cle} non trouvé...")
+```
+
+**Solution:** Verify `MOIS_MAPPING` (bot.py:37-42) values match your CSV:
+```python
+MOIS_MAPPING = {
+    "january": "JANVIER",  # Must match CSV exactly
+    "february": "FÉVRIER",  # Check accents!
+    # ...
+}
+```
+
+**2. Wrong skiprows value**
+
+The CSV reader skips 3 header rows by default (bot.py:192):
+```python
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32)
+```
+
+**Solution:**
+- Count header rows in your CSV
+- Adjust `skiprows` parameter to match
+- The first data row should contain month names
+
+**3. Incorrect column structure**
+
+Expected format per month:
+- Column 1: Day abbreviations
+- Column 2: Morning classes  
+- Column 3: Afternoon classes
+
+**Solution:** Verify your Google Sheets export matches this 3-column pattern.
+
+**4. CSV encoding issues**
+
+If you see garbled characters (especially accents):
+
+**Solution:** Specify encoding explicitly:
+```python
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32, encoding='utf-8')
+```
+
+</Accordion>
+
+<Accordion title="Date parsing errors">
+
+### Symptoms
+- Error: "Format invalide. Utilise `YYYY-MM-DD`"
+- Wrong week displayed
+- "Aucun cours cette semaine" for weeks with classes
+
+### Causes & Solutions
+
+**1. Wrong date format**
+
+The bot expects DD-MM-YYYY format (bot.py:110-112):
+
+```python
+def parse_iso_date(s: str):
+    return datetime.strptime(s, "%d-%m-%Y").date()
+```
+
+**Examples:**
+- ✅ Correct: `02-03-2026`
+- ❌ Wrong: `2026-03-02` (YYYY-MM-DD)
+- ❌ Wrong: `03/02/2026` (slashes)
+- ❌ Wrong: `2-3-2026` (missing leading zeros)
+
+**Solution:** Update the command description (bot.py:319) to clarify the expected format.
+
+**2. ISO week calculation confusion**
+
+The bot uses ISO 8601 week numbering (bot.py:187-189):
+
+```python
+target_iso = ref_dt.isocalendar()
+target_week = target_iso.week
+target_isoyear = target_iso.year  # May differ from calendar year!
+```
+
+**Important:**
+- Weeks start on Monday
+- Week 1 contains the first Thursday of the year
+- December 29-31 may be in Week 1 of next year
+- January 1-3 may be in Week 52/53 of previous year
+
+**3. Weekend date behavior**
+
+Weekend dates are shifted to the following Monday (bot.py:184-185):
+
+```python
+if ref_dt.weekday() >= 5:  # Saturday=5, Sunday=6
+    ref_dt += timedelta(days=(7 - ref_dt.weekday()))
+```
+
+**This is intentional** to show the upcoming week for weekend queries.
+
+</Accordion>
+
+<Accordion title="Images not generating correctly">
+
+### Symptoms
+- Blank or corrupted images
+- Text cut off or overlapping
+- Colors not displaying
+
+### Causes & Solutions
+
+**1. Matplotlib backend issues**
+
+If running in a headless environment (no display):
+
+**Solution:** Add to top of bot.py (before matplotlib import):
+```python
+import matplotlib
+matplotlib.use('Agg')  # Use non-GUI backend
+import matplotlib.pyplot as plt
+```
+
+**2. Font rendering problems**
+
+If special characters (accents, emojis) don't display:
+
+**Solution:** Install and specify fonts:
+```python
+import matplotlib.pyplot as plt
+plt.rcParams['font.family'] = 'DejaVu Sans'
+```
+
+**3. Image size issues**
+
+If text is cut off (bot.py:249-250):
+
+```python
+fig_height = max(1.5, 0.6 * len(df_semaine))
+fig, ax = plt.subplots(figsize=(6, fig_height))
+```
+
+**Solution:** Increase figure width or height:
+```python
+fig, ax = plt.subplots(figsize=(8, fig_height))  # Wider
+```
+
+**4. Color not applying**
+
+Check that `cell_colors` match table dimensions (bot.py:239-246):
+
+```python
+cell_colors = []
+for _, row in df_semaine.iterrows():
+    c_matin = couleur_matiere(row["Matin"])
+    c_aprem = couleur_matiere(row["Après-midi"])
+    cell_colors.append(["#FFFFFF", c_matin, c_aprem])  # 3 columns
+```
+
+**Solution:** Ensure each row has exactly 3 colors (Day, Morning, Afternoon).
+
+</Accordion>
+
+<Accordion title="Discord permissions errors">
+
+### Symptoms
+- Error: "Missing Permissions"
+- Bot can't send images
+- Commands work in some channels but not others
+
+### Required Permissions
+
+**Bot-level permissions** (when inviting):
+- `applications.commands` - For slash commands
+- `Send Messages` - Basic messaging
+- `Attach Files` - Send schedule images (bot.py:344)
+- `Use Slash Commands` - Command execution
+
+**Channel-level permissions:**
+Verify the bot role has permissions in target channels:
+
+1. Go to channel settings → Permissions
+2. Find your bot's role
+3. Enable:
+   - View Channel
+   - Send Messages
+   - Attach Files
+   - Use Application Commands
+
+### Testing Permissions
+
+Add permission check before sending:
+
+```python
+@bot.tree.command(name="planning", description="...")
+async def planning(interaction: discord.Interaction, date: str | None = None):
+    # Check permissions
+    if not interaction.channel.permissions_for(interaction.guild.me).attach_files:
+        await interaction.response.send_message(
+            "❌ Je n'ai pas la permission d'envoyer des fichiers ici.",
+            ephemeral=True
+        )
+        return
+    
+    await interaction.response.defer()
+    # ... rest of command ...
+```
+
+</Accordion>
+
+<Accordion title="Environment variable errors">
+
+### Symptoms
+- Bot crashes on startup
+- Error: "NoneType object has no attribute..."
+- Missing token or path errors
+
+### Causes & Solutions
+
+**1. .env file not found**
+
+The bot loads environment variables at startup (bot.py:13, 18-19):
+
+```python
+load_dotenv()
+TOKEN = str(os.getenv("DISCORD_TOKEN"))
+SHEET_PATH = str(os.getenv("EDT_PATH"))
+```
+
+**Solution:** Create `.env` file in the same directory as bot.py:
+```bash
+DISCORD_TOKEN=your_token_here
+EDT_PATH=/path/to/schedule.csv
+```
+
+**2. Wrong variable names**
+
+Variable names are **case-sensitive**:
+- ✅ `DISCORD_TOKEN`
+- ❌ `discord_token`
+- ❌ `TOKEN`
+
+**3. Token format issues**
+
+Discord bot tokens should:
+- Be ~70 characters long
+- Not contain spaces or quotes
+- Not have `Bot ` prefix (added by discord.py automatically)
+
+**4. CSV path issues**
+
+For local files:
+```bash
+EDT_PATH=/absolute/path/to/file.csv
+```
+
+For Google Sheets:
+```bash
+EDT_PATH=https://docs.google.com/spreadsheets/d/SHEET_ID/export?format=csv
+```
+
+<Tip>
+Use absolute paths for local files. Relative paths may fail depending on where the bot is executed.
+</Tip>
+
+</Accordion>
+
+<Accordion title="Course codes not mapping correctly">
+
+### Symptoms
+- Course codes displayed as-is instead of names
+- "Hors jour de cours" shown for valid classes
+- Wrong course names
+
+### Causes & Solutions
+
+**1. Code mismatch in MATIERE_MAP**
+
+The mapping is **exact match only** (bot.py:58-59):
+
+```python
+if code in MATIERE_MAP:
+    return f"{code} : {MATIERE_MAP[code]}"
+```
+
+**Common issues:**
+- Extra spaces: `"UTC501 "` vs `"UTC501"`
+- Case sensitivity: `"utc501"` vs `"UTC501"`
+- Special characters: `"UTC504-IM"` vs `"UTC504 - IM"`
+
+**Solution:** Print the actual codes from CSV:
+```python
+def remplacer_code_matiere(code):
+    if pd.isna(code):
+        return ""
+    code = str(code).strip()
+    
+    print(f"DEBUG: Code from CSV: '{code}'")  # Add this
+    
+    if code in MATIERE_MAP:
+        return f"{code} : {MATIERE_MAP[code]}"
+    # ...
+```
+
+Then match the exact format in `MATIERE_MAP` (bot.py:22-35).
+
+**2. Missing course in dictionary**
+
+Unmapped codes are displayed as-is (bot.py:62):
+
+```python
+return code  # Shows original code if not in MATIERE_MAP
+```
+
+**Solution:** Add all course codes to `MATIERE_MAP`:
+```python
+MATIERE_MAP = {
+    # ... existing courses ...
+    "NEW101": "New Course Name",
+}
+```
+
+**3. SEM codes interfering**
+
+Semester markers ("SEM" prefix) are filtered out (bot.py:60-61):
+
+```python
+if code.startswith("SEM"):
+    return ""  # These are hidden
+```
+
+If you have course codes starting with "SEM", modify this logic.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Debugging Tips
+
+### Enable Detailed Logging
+
+Add logging at the top of bot.py:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger('discord')
+logger.setLevel(logging.DEBUG)
+```
+
+### Inspect CSV Structure
+
+Add temporary debug code to print CSV contents:
+
+```python
+# In get_week_image_for_date() after line 192
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32)
+print("CSV Header:", df_raw.iloc[0].tolist())
+print("CSV Shape:", df_raw.shape)
+print("First 5 rows:\n", df_raw.head())
+```
+
+### Test Individual Functions
+
+Create a test script:
+
+```python
+# test_bot.py
+from bot import extract_month_df, remplacer_code_matiere, get_week_image_for_date
+from datetime import date
+import pandas as pd
+
+# Test course mapping
+print(remplacer_code_matiere("UTC501"))  # Should: UTC501 : Maths
+
+# Test week image generation
+img = get_week_image_for_date(date(2026, 3, 2))
+if img:
+    with open("test.png", "wb") as f:
+        f.write(img.getvalue())
+    print("✅ Image saved to test.png")
+else:
+    print("❌ No classes found")
+```
+
+### Check ISO Week Calculations
+
+```python
+from datetime import date
+
+test_date = date(2026, 3, 2)
+iso = test_date.isocalendar()
+print(f"Date: {test_date}")
+print(f"ISO Year: {iso.year}")
+print(f"ISO Week: {iso.week}")
+print(f"Weekday: {test_date.weekday()} (0=Monday)")
+```
+
+### Validate Environment Variables
+
+```python
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+print("TOKEN:", "SET" if os.getenv("DISCORD_TOKEN") else "MISSING")
+print("PATH:", os.getenv("EDT_PATH"))
+```
+
+## Error Messages Reference
+
+### Common Error Patterns
+
+| Error Message | Location | Cause | Solution |
+|--------------|----------|-------|----------|
+| `Mois {month} non trouvé` | bot.py:120 | Month name mismatch | Check MOIS_MAPPING |
+| `Format invalide` | bot.py:332 | Wrong date format | Use DD-MM-YYYY |
+| `Impossible d'extraire des données` | bot.py:208 | CSV parsing failed | Check CSV structure |
+| `Missing Permissions` | Discord | Bot lacks permissions | Check bot/channel perms |
+| `NoneType object` | Various | Environment var missing | Check .env file |
+
+### Stack Trace Line Numbers
+
+The bot includes helpful error reporting (bot.py:346-356):
+
+```python
+except Exception as e:
+    tb_list = traceback.extract_tb(e.__traceback__)
+    if tb_list:
+        last = tb_list[-1]
+        line_info = f"{os.path.basename(last.filename)}:{last.lineno}"
+    # Shows: bot.py:XXX in error message
+```
+
+Use the line number to pinpoint the exact failure location.
+
+## Performance Issues
+
+<Tip>
+The bot uses `interaction.response.defer()` (bot.py:321) to prevent timeout errors during CSV processing. This is normal and expected behavior.
+</Tip>
+
+### Slow Response Times
+
+**Causes:**
+- Large CSV files
+- Slow network (if CSV is remote URL)
+- Complex matplotlib rendering
+
+**Solutions:**
+
+1. **Cache CSV data:**
+```python
+import functools
+import time
+
+@functools.lru_cache(maxsize=1)
+def get_cached_csv(path, cache_time):
+    return pd.read_csv(path, header=None, skiprows=3, nrows=32)
+
+# Use in get_week_image_for_date():
+cache_key = int(time.time() / 300)  # 5-minute cache
+df_raw = get_cached_csv(SHEET_PATH, cache_key)
+```
+
+2. **Reduce image quality:**
+```python
+plt.savefig(buf, format="png", bbox_inches="tight", pad_inches=0, dpi=72)  # Lower DPI
+```
+
+3. **Download CSV locally** instead of using Google Sheets URL.
+
+## Getting Help
+
+If you're still experiencing issues:
+
+1. **Check line numbers** in error messages to locate the problem
+2. **Add print statements** around the failing line
+3. **Test with a minimal CSV** to isolate the issue
+4. **Verify all requirements** are installed: `discord.py`, `pandas`, `matplotlib`, `python-dotenv`
+
+<Tip>
+When reporting issues, include:
+- Full error message with line numbers
+- Python version (`python --version`)
+- Package versions (`pip list`)
+- Sample CSV structure (first few rows)
+- Environment details (OS, hosting platform)
+</Tip>

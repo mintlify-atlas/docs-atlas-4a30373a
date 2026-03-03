@@ -1,0 +1,225 @@
+---
+title: Bot Architecture
+description: Understanding the Bot Planning architecture, key functions, and data flow from Google Sheets to Discord
+---
+
+## Overview
+
+The Bot Planning system is a Discord bot that fetches schedule data from a Google Sheets CSV export and displays it as formatted weekly schedule images. The bot is built using discord.py and processes CSV data through pandas for manipulation and matplotlib for visualization.
+
+## Core Architecture
+
+### Data Flow
+
+The bot follows this data flow pipeline:
+
+1. **CSV Import** - Reads schedule data from Google Sheets export (bot.py:192)
+2. **Month Extraction** - Identifies and extracts relevant month data (bot.py:123-155)
+3. **Week Filtering** - Filters data to the target ISO week (bot.py:212-213)
+4. **Code Replacement** - Maps course codes to readable names (bot.py:53-62)
+5. **Image Generation** - Creates a color-coded table image (bot.py:248-277)
+6. **Discord Delivery** - Sends the image to the Discord channel (bot.py:344)
+
+### Key Components
+
+#### Configuration (Lines 16-42)
+
+The bot configuration includes:
+- Discord bot token and CSV path from environment variables
+- `MATIERE_MAP` - Course code to name mappings (bot.py:22-35)
+- `MOIS_MAPPING` - French month name mappings (bot.py:37-42)
+
+```python
+MATIERE_MAP = {
+    "UTC501": "Maths",
+    "UTC502": "OS",
+    "UTC503": "Programmation",
+    # ... more courses
+}
+```
+
+#### Discord Bot Setup (Lines 48-49)
+
+The bot uses discord.py's commands.Bot with slash command support:
+
+```python
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="/", intents=intents)
+```
+
+## Key Functions
+
+### get_week_image_for_date()
+
+**Location:** bot.py:173-277
+
+**Purpose:** Main function that generates a schedule image for any given date's week.
+
+**Process:**
+1. Normalizes the input date to datetime (bot.py:179-182)
+2. Adjusts weekend dates to the following Monday (bot.py:184-185)
+3. Calculates ISO week and year numbers (bot.py:187-189)
+4. Reads the CSV file (bot.py:192)
+5. Extracts current month and neighboring months (bot.py:194-210)
+6. Filters to the target ISO week (bot.py:212-213)
+7. Removes weekend days (bot.py:222)
+8. Replaces course codes with names (bot.py:229-230)
+9. Applies color coding (bot.py:239-246)
+10. Generates matplotlib table image (bot.py:248-275)
+11. Returns BytesIO buffer (bot.py:272-277)
+
+**Returns:** BytesIO buffer containing PNG image, or None if no classes
+
+### extract_month_df()
+
+**Location:** bot.py:123-155
+
+**Purpose:** Extracts and processes data for a specific month from the raw CSV.
+
+**Key operations:**
+- Finds the month column using French month names (bot.py:129)
+- Extracts 3 columns: Day, Morning, Afternoon (bot.py:131-132)
+- Cleans and maps day abbreviations (bot.py:139)
+- Adds proper date objects for each day (bot.py:142-149)
+- Calculates ISO week numbers (bot.py:151-153)
+
+```python
+def extract_month_df(df_raw: pd.DataFrame, year: int, month: int):
+    # Locates month column in CSV
+    mois_col_index = find_month_col_index(df_raw, mois_cle)
+    
+    # Extracts 3-column section
+    df_mois = df_raw.iloc[1:, mois_col_index:mois_col_index + 3].copy()
+    df_mois.columns = ["Jour", "Matin", "Après-midi"]
+    
+    # Adds date and ISO week information
+    df_mois["Date"] = all_dates[:len(df_mois)].values
+    iso = df_mois["Date"].dt.isocalendar()
+    df_mois["IsoYear"] = iso.year
+    df_mois["Semaine"] = iso.week
+```
+
+### remplacer_code_matiere()
+
+**Location:** bot.py:53-62
+
+**Purpose:** Transforms course codes into readable "CODE : Name" format.
+
+**Logic:**
+- Returns empty string for NaN values (bot.py:54-55)
+- Looks up code in MATIERE_MAP dictionary (bot.py:58-59)
+- Filters out semester markers ("SEM" prefix) (bot.py:60-61)
+- Returns original code if not found in mapping (bot.py:62)
+
+### Color System
+
+The bot includes an automatic color generation system for courses:
+
+#### generer_couleur_automatique() (Lines 68-86)
+
+Generates unique pastel colors using MD5 hashing:
+- Creates MD5 hash of course code (bot.py:72)
+- Extracts RGB values from hash (bot.py:76-78)
+- Converts to pastel by blending with white (bot.py:82-84)
+- Returns hex color string (bot.py:86)
+
+#### couleur_texte() (Lines 97-107)
+
+Determines optimal text color (black/white) based on background luminosity:
+- Converts hex to RGB (bot.py:100-101)
+- Calculates luminosity using standard formula (bot.py:104)
+- Returns white text for dark backgrounds, black for light (bot.py:107)
+
+## ISO Week Calculation
+
+The bot uses ISO 8601 week numbering:
+
+```python
+# From bot.py:187-189
+target_iso = ref_dt.isocalendar()
+target_week = target_iso.week
+target_isoyear = target_iso.year
+```
+
+**Important considerations:**
+- Weeks start on Monday
+- Week 1 contains the first Thursday of the year
+- ISO year may differ from calendar year for boundary weeks
+- Weekend dates are shifted to the following Monday (bot.py:184-185)
+
+<Tip>
+The bot processes neighboring months (previous, current, next) to handle weeks that span across month boundaries. This ensures complete week data even at month edges.
+</Tip>
+
+## CSV Parsing Strategy
+
+### File Structure Assumptions
+
+```python
+# bot.py:192
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32)
+```
+
+- **skiprows=3**: Skips 3 header rows in Google Sheets export
+- **nrows=32**: Reads maximum 32 days (covers longest months)
+- **header=None**: No automatic column names, set manually
+
+### Month Detection
+
+The bot locates month sections by searching for French month names in the first row:
+
+```python
+# bot.py:115-120
+def find_month_col_index(df: pd.DataFrame, mois_cle: str):
+    header_row = df.iloc[0].astype(str)
+    for i, val in enumerate(header_row):
+        if pd.notna(val) and mois_cle in str(val):
+            return i
+    raise ValueError(f"Mois {mois_cle} non trouvé dans le fichier CSV.")
+```
+
+## Discord Command
+
+### /planning Command (Lines 318-356)
+
+**Syntax:** `/planning [date]`
+
+**Parameters:**
+- `date` (optional): Date in DD-MM-YYYY format (e.g., "02-03-2026")
+
+**Behavior:**
+- Without date: Shows current week's schedule (bot.py:326)
+- With date: Shows schedule for the week containing that date (bot.py:335)
+- Returns info message if no classes found (bot.py:338-342)
+- Includes detailed error reporting with line numbers (bot.py:346-356)
+
+<Tip>
+The bot uses `interaction.response.defer()` (bot.py:321) to prevent timeout issues while processing CSV data and generating images, which can take several seconds.
+</Tip>
+
+## Bot Initialization
+
+### on_ready Event (Lines 362-369)
+
+When the bot starts:
+1. Confirms connection (bot.py:364)
+2. Syncs slash commands with Discord (bot.py:366)
+3. Logs success/failure (bot.py:367-369)
+
+```python
+@bot.event
+async def on_ready():
+    print(f"✅ Bot connecté en tant que {bot.user}")
+    await bot.tree.sync()
+```
+
+## Environment Configuration
+
+The bot requires a `.env` file with:
+
+```bash
+DISCORD_TOKEN=your_bot_token_here
+EDT_PATH=path_to_csv_file_or_url
+```
+
+These are loaded at startup (bot.py:13) and accessed via `os.getenv()` (bot.py:18-19).

@@ -1,0 +1,78 @@
+---
+title: Introduction
+description: A Discord bot that fetches class schedules from Google Sheets and displays them as beautiful formatted images
+---
+
+## What is Bot Planning?
+
+Bot Planning is a Discord bot designed to make class schedule management effortless. It automatically fetches scheduling data from Google Sheets and generates visual weekly planners that can be shared directly in Discord channels.
+
+Built for students and educators, this bot transforms raw spreadsheet data into color-coded, easy-to-read schedule images with a single command.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Google Sheets integration" icon="table">
+    Automatically pulls schedule data from Google Sheets in real-time using CSV export URLs
+  </Card>
+  
+  <Card title="Visual schedule generation" icon="calendar">
+    Creates beautiful, color-coded schedule images with automatic pastel color assignment per subject
+  </Card>
+  
+  <Card title="Discord slash commands" icon="slash">
+    Simple `/planning` command to view current week or query specific dates
+  </Card>
+  
+  <Card title="Docker deployment" icon="docker">
+    Easy containerized deployment with environment variable configuration
+  </Card>
+  
+  <Card title="Intelligent date parsing" icon="clock">
+    Automatically handles week boundaries, holidays, and multi-month schedules
+  </Card>
+  
+  <Card title="Subject code mapping" icon="book">
+    Maps course codes to full names (e.g., "UTC501" → "UTC501 : Maths")
+  </Card>
+</CardGroup>
+
+## How it works
+
+1. **Data source**: The bot reads schedule data from a Google Sheets document exported as CSV
+2. **Processing**: It parses dates, maps course codes to readable names, and handles special cases like holidays
+3. **Visualization**: Using matplotlib, it generates a formatted table image with color-coded subjects
+4. **Delivery**: The image is sent directly to Discord in response to the `/planning` command
+
+<Note>
+  The bot intelligently handles edge cases like weekends, holidays (marked as "FERIE"), and weeks that span multiple months.
+</Note>
+
+## Tech stack
+
+Bot Planning is built with:
+
+- **Python 3.11** - Core programming language
+- **discord.py** - Discord API integration and slash commands
+- **pandas** - CSV parsing and data manipulation
+- **matplotlib** - Schedule image generation
+- **Docker** - Containerized deployment
+
+## Use cases
+
+- **Student groups**: Share weekly schedules automatically in Discord servers
+- **Educational institutions**: Provide real-time schedule access to students
+- **Study groups**: Coordinate meeting times based on class schedules
+- **Personal planning**: Quick access to your weekly schedule without opening spreadsheets
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart guide" icon="rocket" href="/quickstart">
+    Get your bot up and running in minutes
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration/environment-variables">
+    Learn about environment variables and customization options
+  </Card>
+</CardGroup>

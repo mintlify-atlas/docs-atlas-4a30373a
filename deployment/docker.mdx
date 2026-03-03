@@ -1,0 +1,260 @@
+---
+title: Docker Deployment
+description: Deploy Bot Planning using Docker for isolated and portable execution
+---
+
+## Overview
+
+Bot Planning can be deployed using Docker, which provides an isolated environment with all required dependencies. This method ensures consistency across different environments and simplifies deployment.
+
+## Prerequisites
+
+- Docker installed on your system
+- A Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
+- Google Sheets URL for your planning/schedule (exported as CSV)
+
+## Dockerfile Explanation
+
+The project uses the following Dockerfile:
+
+```dockerfile
+# Image de base Python
+FROM python:3.11-slim
+
+# Définir le répertoire de travail
+WORKDIR /app
+
+# Copier les fichiers requirements et code
+COPY requirements.txt .
+COPY . .
+
+# Installer les dépendances
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Définir la commande pour démarrer le bot
+CMD ["python", "bot.py"]
+```
+
+**What this Dockerfile does:**
+
+1. **Base Image**: Uses `python:3.11-slim` for a lightweight Python environment
+2. **Working Directory**: Sets `/app` as the working directory inside the container
+3. **Copy Files**: Copies `requirements.txt` first (for layer caching), then all project files
+4. **Install Dependencies**: Installs Python packages:
+   - `discord.py` - Discord bot framework
+   - `pandas` - Data manipulation for CSV processing
+   - `matplotlib` - Image generation for schedules
+   - `dotenv` - Environment variable management
+5. **Start Command**: Launches the bot with `python bot.py`
+
+## Environment Configuration
+
+Create a `.env` file in your project directory with the following variables:
+
+```bash
+DISCORD_TOKEN=your_discord_bot_token_here
+EDT_PATH=https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv
+```
+
+<Note>
+  **Important**: The `EDT_PATH` must end with `/export?format=csv` to properly export the Google Sheets data.
+</Note>
+
+## Deployment Steps
+
+<Steps>
+  <Step title="Create Discord Bot">
+    Navigate to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new bot application. Copy your bot token.
+  </Step>
+
+  <Step title="Prepare Environment File">
+    Create a `.env` file in your project directory with your `DISCORD_TOKEN` and `EDT_PATH` variables.
+  </Step>
+
+  <Step title="Build Docker Image">
+    Build the Docker image from the Dockerfile:
+
+    ```bash
+    docker build -t bot-planning .
+    ```
+
+    This creates an image tagged as `bot-planning` with all dependencies installed.
+  </Step>
+
+  <Step title="Run the Container">
+    Start the bot container with your environment configuration:
+
+    <CodeGroup>
+      ```bash Bash
+      docker run -d --name bot-planning \
+        --env-file .env \
+        --restart always \
+        bot-planning:latest
+      ```
+
+      ```powershell PowerShell
+      docker run -d --name bot-planning `
+        --env-file .env `
+        --restart always `
+        bot-planning:latest
+      ```
+    </CodeGroup>
+
+    **Command options explained:**
+    - `-d` - Run container in detached mode (background)
+    - `--name bot-planning` - Assign a friendly name to the container
+    - `--env-file .env` - Load environment variables from `.env` file
+    - `--restart always` - Automatically restart container if it stops
+    - `bot-planning:latest` - Use the image we just built
+  </Step>
+
+  <Step title="Verify Deployment">
+    Check that the container is running:
+
+    ```bash
+    docker ps
+    ```
+
+    View bot logs:
+
+    ```bash
+    docker logs bot-planning
+    ```
+
+    Follow logs in real-time:
+
+    ```bash
+    docker logs -f bot-planning
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  **Restart Policy**: The `--restart always` flag ensures your bot automatically restarts after system reboots or if the container crashes. This is crucial for maintaining uptime in production.
+</Note>
+
+## Managing the Container
+
+### Stop the Bot
+
+```bash
+docker stop bot-planning
+```
+
+### Start the Bot
+
+```bash
+docker start bot-planning
+```
+
+### Restart the Bot
+
+```bash
+docker restart bot-planning
+```
+
+### Remove the Container
+
+```bash
+docker rm -f bot-planning
+```
+
+### View Resource Usage
+
+```bash
+docker stats bot-planning
+```
+
+## Updating the Bot
+
+When you need to update the bot code:
+
+<Steps>
+  <Step title="Stop and Remove Old Container">
+    ```bash
+    docker stop bot-planning
+    docker rm bot-planning
+    ```
+  </Step>
+
+  <Step title="Rebuild the Image">
+    ```bash
+    docker build -t bot-planning .
+    ```
+  </Step>
+
+  <Step title="Start New Container">
+    <CodeGroup>
+      ```bash Bash
+      docker run -d --name bot-planning \
+        --env-file .env \
+        --restart always \
+        bot-planning:latest
+      ```
+
+      ```powershell PowerShell
+      docker run -d --name bot-planning `
+        --env-file .env `
+        --restart always `
+        bot-planning:latest
+      ```
+    </CodeGroup>
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Container Exits Immediately
+
+Check the logs for errors:
+
+```bash
+docker logs bot-planning
+```
+
+Common issues:
+- Invalid Discord token
+- Incorrect Google Sheets URL format
+- Missing environment variables
+
+### Environment Variables Not Loading
+
+Verify your `.env` file path is correct and the file exists:
+
+```bash
+ls -la .env
+```
+
+Alternatively, pass environment variables directly:
+
+<CodeGroup>
+  ```bash Bash
+  docker run -d --name bot-planning \
+    -e DISCORD_TOKEN="your_token" \
+    -e EDT_PATH="your_sheets_url" \
+    --restart always \
+    bot-planning:latest
+  ```
+
+  ```powershell PowerShell
+  docker run -d --name bot-planning `
+    -e DISCORD_TOKEN="your_token" `
+    -e EDT_PATH="your_sheets_url" `
+    --restart always `
+    bot-planning:latest
+  ```
+</CodeGroup>
+
+### Image Build Fails
+
+Ensure you're in the correct directory containing the Dockerfile:
+
+```bash
+ls Dockerfile requirements.txt bot.py
+```
+
+Clear Docker cache and rebuild:
+
+```bash
+docker build --no-cache -t bot-planning .
+```

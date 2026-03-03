@@ -1,0 +1,201 @@
+---
+title: Google Sheets Setup
+description: Configure your Google Sheets with the proper CSV format for schedule data that the bot can parse correctly
+---
+
+The Bot Planning application reads schedule data from a Google Sheets document exported as CSV. The sheet must follow a specific structure for the bot to parse it correctly.
+
+## Required CSV Format
+
+The CSV parsing logic in `bot.py:192` expects a specific structure:
+
+```python
+df_raw = pd.read_csv(SHEET_PATH, header=None, skiprows=3, nrows=32)
+```
+
+### File Structure Requirements
+
+<Warning>
+  The first 3 rows are skipped during parsing. Use these for title, metadata, or headers that won't be processed.
+</Warning>
+
+- **Rows 1-3:** Header information (skipped by parser)
+- **Row 4:** Month names in French (JANVIER, FÉVRIER, MARS, etc.)
+- **Rows 5-35:** Schedule data (maximum 32 rows processed)
+
+### Column Structure
+
+Each month should have 3 consecutive columns:
+
+1. **Day column:** Day of week abbreviation (L, M, Me, J, V, S, D)
+2. **Morning column:** Morning class code or "FERIE" for holidays
+3. **Afternoon column:** Afternoon class code or leave empty
+
+**Example layout:**
+
+| (ignored) | JANVIER | | | FÉVRIER | | | MARS | | |
+|-----------|---------|--------|---------|---------|--------|---------|---------|--------|--------|
+| (ignored) | Jour | Matin | Après-midi | Jour | Matin | Après-midi | Jour | Matin | Après-midi |
+| Day 1 | L | UTC501 | UTC502 | L | GDN100 | | L | NFP121 | |
+| Day 2 | M | UTC503 | | M | SEC102-FC | ANG320 | M | | RSX102 |
+
+## Month Name Mapping
+
+The bot maps English month names to French (`bot.py:37-42`):
+
+```python
+MOIS_MAPPING = {
+    "january": "JANVIER", "february": "FÉVRIER", "march": "MARS",
+    "april": "AVRIL", "may": "MAI", "june": "JUIN",
+    "july": "JUILLET", "august": "AOÛT", "september": "SEPTEMBRE",
+    "october": "OCTOBRE", "november": "NOVEMBRE", "december": "DECEMBRE"
+}
+```
+
+<Warning>
+  Month headers in row 4 must use French names in uppercase (JANVIER, FÉVRIER, etc.) or the bot won't be able to locate the month columns.
+</Warning>
+
+## Day Abbreviations
+
+The parser recognizes these day abbreviations (`bot.py:284-312`):
+
+- **L** → Lundi (Monday)
+- **M** → Mardi (Tuesday) or Mercredi (Wednesday) depending on context
+- **Me** → Mercredi (Wednesday)
+- **J** → Jeudi (Thursday)
+- **V** → Vendredi (Friday)
+- **S** → Samedi (Saturday)
+- **D** → Dimanche (Sunday)
+
+<Note>
+  The letter "M" is context-aware: if the previous day was "Lundi", it becomes "Mardi". Otherwise, it becomes "Mercredi".
+</Note>
+
+## Course Codes
+
+You can use any course code in the morning/afternoon columns. The bot has a predefined mapping (`bot.py:22-35`) for common courses:
+
+```python
+MATIERE_MAP = {
+    "UTC501": "Maths",
+    "UTC502": "OS",
+    "UTC503": "Programmation",
+    "UTC504 - IM": "SI et BD",
+    "UTC505": "Réseaux",
+    "GDN100": "Gestion",
+    "SEC102-FC": "Cybersécurité",
+    "SEC102-AD": "Cybersécurité",
+    "NFP121": "Programmation avancée",
+    "NFP107": "SQL",
+    "RSX102": "Applications réseaux",
+    "ANG320": "Anglais",
+}
+```
+
+Codes in the mapping will display as "CODE : Name" (e.g., "UTC501 : Maths"). Unknown codes will display as-is.
+
+## Special Values
+
+- **FERIE:** Marks a public holiday (both morning and afternoon become "FERIE")
+- **Empty cells:** Displayed as "Hors jour de cours" (No class day)
+- **SEM prefix:** Codes starting with "SEM" are ignored/treated as empty
+
+## Setup Instructions
+
+<Steps>
+  <Step title="Create Google Sheets document">
+    Create a new Google Sheets document for your schedule.
+  </Step>
+  
+  <Step title="Structure the sheet">
+    Format your sheet with:
+    - Rows 1-3: Headers/metadata (optional, will be skipped)
+    - Row 4: Month names in French uppercase
+    - Rows 5+: Daily schedule data
+    
+    Each month should have 3 columns: Day, Morning, Afternoon
+  </Step>
+  
+  <Step title="Fill in schedule data">
+    Add your schedule:
+    - Use day abbreviations (L, M, Me, J, V)
+    - Enter course codes for morning and afternoon slots
+    - Use "FERIE" for holidays
+    - Leave cells empty for free periods
+  </Step>
+  
+  <Step title="Make sheet publicly accessible">
+    **File → Share → Change to "Anyone with the link"**
+    
+    Set permission to "Viewer" so the bot can read the data.
+    
+    <Warning>
+      The sheet must be accessible without authentication for the bot to read it.
+    </Warning>
+  </Step>
+  
+  <Step title="Get the CSV export URL">
+    Your CSV export URL format:
+    
+    ```
+    https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv
+    ```
+    
+    Replace `YOUR_SHEET_ID` with the actual ID from your sheet's URL.
+    
+    **Example:**
+    If your sheet URL is:
+    ```
+    https://docs.google.com/spreadsheets/d/1abc123xyz789/edit#gid=0
+    ```
+    
+    Your CSV export URL is:
+    ```
+    https://docs.google.com/spreadsheets/d/1abc123xyz789/export?format=csv
+    ```
+  </Step>
+  
+  <Step title="Test the CSV export">
+    Open the CSV export URL in your browser. It should download a CSV file with your schedule data.
+  </Step>
+  
+  <Step title="Add URL to environment variables">
+    Add the CSV export URL to your `.env` file:
+    
+    ```bash
+    EDT_PATH=https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv
+    ```
+  </Step>
+</Steps>
+
+## Example Google Sheets Template
+
+Here's a minimal working example:
+
+| Bot Planning Schedule |
+| Academic Year 2026 |
+| (leave this row empty) |
+| **JANVIER** | | | **FÉVRIER** | | |
+| **Jour** | **Matin** | **Après-midi** | **Jour** | **Matin** | **Après-midi** |
+| L | UTC501 | UTC502 | L | GDN100 | SEC102-FC |
+| M | UTC503 | | M | | ANG320 |
+| Me | UTC505 | NFP107 | Me | NFP121 | |
+| J | | UTC502 | J | FERIE | |
+| V | ANG320 | | V | RSX102 | UTC505 |
+
+## Troubleshooting
+
+**Month not found error:**
+- Verify month names are in French and uppercase
+- Check there are no extra spaces
+- Ensure month names are in row 4 (after 3 skipped rows)
+
+**Wrong days displayed:**
+- Verify day abbreviations are correct (L, M, Me, J, V)
+- Check for case sensitivity (should be lowercase in your sheet)
+
+**Missing schedule data:**
+- Ensure the sheet is publicly accessible
+- Verify the CSV export URL works in a browser
+- Check that you have data in rows 5-35 (within the 32-row limit)

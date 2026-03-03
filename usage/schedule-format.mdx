@@ -1,0 +1,134 @@
+---
+title: 'Schedule Display Format'
+description: 'Understanding the schedule table, color coding system, and course mappings'
+---
+
+## Schedule Table Structure
+
+The bot displays your weekly schedule as a table with three columns:
+
+| Column | Description |
+|--------|-------------|
+| **Jour** | Day of the week (Monday-Friday) |
+| **Matin** | Morning courses |
+| **Après-midi** | Afternoon courses |
+
+<Info>
+  Weekends (Saturday and Sunday) are automatically filtered out and not displayed in the schedule.
+</Info>
+
+## Course Code Mappings
+
+The bot displays courses in the format: `CODE : Course Name`
+
+Here are all the course code mappings:
+
+| Course Code | Display Name |
+|-------------|-------------|
+| UTC501 | Maths |
+| UTC502 | OS |
+| UTC503 | Programmation |
+| UTC504 - IM | SI et BD |
+| UTC505 | Réseaux |
+| GDN100 | Gestion |
+| SEC102-FC | Cybersécurité |
+| SEC102-AD | Cybersécurité |
+| NFP121 | Programmation avancée |
+| NFP107 | SQL |
+| RSX102 | Applications réseaux |
+| ANG320 | Anglais |
+
+Example: `UTC501` is displayed as **UTC501 : Maths**
+
+<Info>
+  If a course code is not in the mapping, it will be displayed as-is. Course codes starting with "SEM" are treated as empty cells.
+</Info>
+
+## Color Coding System
+
+Each course is assigned a unique pastel color to make the schedule easy to read at a glance. The color system uses two components:
+
+### Automatic Color Generation
+
+Colors are automatically generated based on the course code using a deterministic algorithm:
+
+1. **Hash Generation**: The course code is hashed using MD5
+2. **RGB Extraction**: RGB values are extracted from the hash
+3. **Pastel Conversion**: Colors are lightened to create a pastel effect using the formula:
+   ```
+   pastel_color = original_color * 0.5 + white * 0.5
+   ```
+
+This ensures:
+- Each course always gets the same color
+- Colors are visually distinct
+- Colors are soft and easy on the eyes (pastel palette)
+
+### Implementation
+
+The color generation algorithm (from `bot.py:68-86`):
+
+```python
+def generer_couleur_automatique(code):
+    """Génère une couleur hexadécimale pastel unique basée sur le code de l'UE"""
+    code = str(code).strip()
+    # Créer un hash du code
+    hash_obj = hashlib.md5(code.encode())
+    hash_hex = hash_obj.hexdigest()
+
+    # Extraire les composantes RGB du hash
+    r = int(hash_hex[0:2], 16)
+    g = int(hash_hex[2:4], 16)
+    b = int(hash_hex[4:6], 16)
+
+    # Convertir en pastel : augmenter la luminosité en mélangeant avec du blanc
+    r = int(r * 0.5 + 255 * 0.5)
+    g = int(g * 0.5 + 255 * 0.5)
+    b = int(b * 0.5 + 255 * 0.5)
+
+    return f"#{r:02x}{g:02x}{b:02x}"
+```
+
+### Text Color Optimization
+
+The bot automatically determines whether to use black or white text based on the background color's luminosity:
+
+- **Dark backgrounds**: White text (#FFFFFF)
+- **Light backgrounds**: Black text (#000000)
+
+Luminosity is calculated using the standard formula:
+```
+luminosity = (0.299 * R + 0.587 * G + 0.114 * B) / 255
+```
+
+If luminosity < 0.5, the background is considered dark and white text is used.
+
+## Special Cell Values
+
+| Display Value | Meaning |
+|---------------|----------|
+| **FERIE** | Public holiday (no classes) |
+| **Hors jour de cours** | Not a class day |
+| *(empty)* | No course scheduled |
+
+<Info>
+  When the morning slot is marked as "FERIE", the afternoon slot is automatically set to "FERIE" as well.
+</Info>
+
+## Visual Example
+
+A typical schedule display looks like this:
+
+```
+┌─────────────┬──────────────────────────┬──────────────────────────┐
+│ Jour        │ Matin                    │ Après-midi               │
+├─────────────┼──────────────────────────┼──────────────────────────┤
+│ Lundi       │ UTC501 : Maths           │ UTC503 : Programmation   │
+│ Mardi       │ NFP107 : SQL             │ ANG320 : Anglais         │
+│ Mercredi    │ FERIE                    │ FERIE                    │
+│ Jeudi       │ UTC502 : OS              │ RSX102 : Applications... │
+│ Vendredi    │ GDN100 : Gestion         │ Hors jour de cours       │
+└─────────────┴──────────────────────────┴──────────────────────────┘
+```
+
+Each course cell has a unique pastel background color with optimized text contrast.

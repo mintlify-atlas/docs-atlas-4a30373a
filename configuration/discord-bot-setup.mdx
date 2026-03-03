@@ -1,0 +1,225 @@
+---
+title: Discord Bot Setup
+description: Create and configure a Discord bot on the Discord Developer Portal to get your bot token and enable the bot for your server
+---
+
+To use the Bot Planning application, you need to create a Discord bot and obtain a bot token. This guide walks you through the Discord Developer Portal setup process.
+
+## Prerequisites
+
+- A Discord account
+- Administrative access to the Discord server where you want to add the bot
+
+## Creating Your Discord Bot
+
+<Steps>
+  <Step title="Access Discord Developer Portal">
+    Navigate to the [Discord Developer Portal](https://discord.com/developers/applications)
+    
+    Log in with your Discord account if prompted.
+  </Step>
+  
+  <Step title="Create New Application">
+    Click the **"New Application"** button in the top right corner.
+    
+    Enter a name for your application (e.g., "Bot Planning" or "Schedule Bot").
+    
+    Accept the Discord Developer Terms of Service and click **"Create"**.
+  </Step>
+  
+  <Step title="Navigate to Bot Section">
+    In the left sidebar, click on **"Bot"**.
+    
+    If you don't see a bot user yet, click **"Add Bot"** and confirm by clicking **"Yes, do it!"**.
+  </Step>
+  
+  <Step title="Get Your Bot Token">
+    Under the bot's username, find the **"Token"** section.
+    
+    Click **"Reset Token"** (or **"Copy"** if this is your first time).
+    
+    <Warning>
+      This is your bot's authentication token. Copy it immediately and store it securely. You won't be able to see it again without resetting it.
+    </Warning>
+    
+    **Copy the token and add it to your `.env` file:**
+    ```bash
+    DISCORD_TOKEN=your_token_here
+    ```
+  </Step>
+  
+  <Step title="Configure Bot Intents">
+    The bot uses default intents (`bot.py:48`):
+    
+    ```python
+    intents = discord.Intents.default()
+    ```
+    
+    Scroll down to **"Privileged Gateway Intents"** section.
+    
+    You typically don't need to enable any privileged intents for this bot, but you can enable them if needed:
+    - **Presence Intent:** Not required
+    - **Server Members Intent:** Not required
+    - **Message Content Intent:** Not required (bot uses slash commands)
+  </Step>
+  
+  <Step title="Generate Bot Invite URL">
+    In the left sidebar, click on **"OAuth2"** → **"URL Generator"**.
+    
+    Under **"Scopes"**, select:
+    - ✅ `bot`
+    - ✅ `applications.commands`
+    
+    Under **"Bot Permissions"**, select the minimum required permissions:
+    - ✅ Send Messages
+    - ✅ Attach Files (required for sending schedule images)
+    - ✅ Use Slash Commands
+    
+    **Recommended permissions value:** `274877908992`
+  </Step>
+  
+  <Step title="Invite Bot to Your Server">
+    Copy the generated URL from the bottom of the URL Generator page.
+    
+    Paste it into your browser and select the server where you want to add the bot.
+    
+    <Warning>
+      You must have "Manage Server" permission on the Discord server to add bots.
+    </Warning>
+    
+    Click **"Authorize"** and complete the captcha if prompted.
+  </Step>
+  
+  <Step title="Verify Bot is Online">
+    Start your bot application:
+    
+    ```bash
+    python bot.py
+    ```
+    
+    You should see:
+    ```
+    ✅ Bot connecté en tant que YourBotName#1234
+    ✅ Slash commands synchronisées
+    ```
+    
+    In your Discord server, the bot should appear online in the member list.
+  </Step>
+</Steps>
+
+## Bot Configuration Details
+
+The bot is configured with these settings in `bot.py:48-49`:
+
+```python
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="/", intents=intents)
+```
+
+### Slash Command Registration
+
+The bot automatically syncs slash commands when it starts (`bot.py:362-369`):
+
+```python
+@bot.event
+async def on_ready():
+    print(f"✅ Bot connecté en tant que {bot.user}")
+    try:
+        await bot.tree.sync()
+        print("✅ Slash commands synchronisées")
+    except Exception as e:
+        print(f"❌ Erreur de sync : {e}")
+```
+
+<Note>
+  Slash commands may take up to 1 hour to appear globally. For immediate testing, you can sync to a specific guild (server) by modifying the sync code.
+</Note>
+
+## Available Commands
+
+Once configured, your bot will have the following slash command:
+
+### /planning
+
+Displays the schedule for the current week or a specific date.
+
+**Usage:**
+```
+/planning
+/planning date:02-03-2026
+```
+
+**Parameters:**
+- `date` (optional): Date in DD-MM-YYYY format to view that week's schedule
+
+## Troubleshooting
+
+### Bot appears offline
+
+**Check your token:**
+- Ensure `DISCORD_TOKEN` in `.env` matches the token from Discord Developer Portal
+- Verify there are no extra spaces or quotes
+- Try resetting the token in the Developer Portal
+
+**Check your code:**
+- Verify `bot.run(TOKEN)` is being called (`bot.py:371`)
+- Check for errors in the console output
+
+### Slash commands not appearing
+
+**Wait for sync:**
+- Global slash commands can take up to 1 hour to propagate
+- Try restarting Discord client
+
+**Check command sync:**
+- Verify console shows "✅ Slash commands synchronisées"
+- Check for sync errors in console output
+
+**Permission issues:**
+- Ensure bot has "Use Slash Commands" permission in the server
+- Verify bot was invited with `applications.commands` scope
+
+### Bot can't send images
+
+**Missing permissions:**
+- Bot needs "Attach Files" permission
+- Check channel-specific permission overrides
+
+**Check CSV data:**
+- Verify `EDT_PATH` environment variable is set correctly
+- Test the CSV URL in a browser
+- Ensure Google Sheets is publicly accessible
+
+## Security Best Practices
+
+<Warning>
+  Never share your bot token publicly or commit it to version control.
+</Warning>
+
+1. **Keep token secure:**
+   - Store in `.env` file only
+   - Add `.env` to `.gitignore`
+   - Never log or print the token
+
+2. **Reset if compromised:**
+   - If your token is exposed, immediately reset it in Discord Developer Portal
+   - Update your `.env` file with the new token
+   - Restart your bot
+
+3. **Minimal permissions:**
+   - Only grant permissions the bot actually needs
+   - Review permissions periodically
+
+## Next Steps
+
+Once your bot is set up and running:
+
+1. Configure your [Google Sheets](/configuration/google-sheets-setup) with schedule data
+2. Test the `/planning` command in your Discord server
+3. Invite users to start using the bot
+
+## Additional Resources
+
+- [Discord.py Documentation](https://discordpy.readthedocs.io/)
+- [Discord Developer Portal](https://discord.com/developers/applications)
+- [Discord API Documentation](https://discord.com/developers/docs/intro)

@@ -1,0 +1,85 @@
+---
+title: 'Slash Commands'
+description: 'Learn how to use the /planning command to view your course schedule'
+---
+
+## /planning Command
+
+The `/planning` slash command displays your weekly course schedule as a color-coded table image in Discord.
+
+### Usage
+
+```
+/planning [date]
+```
+
+### Parameters
+
+<ParamField path="date" type="string" optional>
+  Date of reference in DD-MM-YYYY format (e.g., 02-03-2026). If omitted, shows the current week's schedule.
+</ParamField>
+
+<Info>
+  The bot automatically displays the week containing the specified date. If you provide a weekend date, it will show the following week's schedule.
+</Info>
+
+### Examples
+
+**View current week schedule:**
+```
+/planning
+```
+
+**View schedule for a specific date:**
+```
+/planning 15-04-2026
+```
+This displays the schedule for the week containing April 15, 2026.
+
+**View schedule for next month:**
+```
+/planning 01-05-2026
+```
+
+### Response Behavior
+
+The command responds with:
+
+- **Schedule Image**: A color-coded table showing morning and afternoon courses for Monday through Friday
+- **No Classes Message**: If there are no courses scheduled for that week:
+  - Current week: "ℹ️ Aucun cours cette semaine."
+  - Specific date: "ℹ️ Aucun cours la semaine contenant le `DD-MM-YYYY`."
+- **Error Message**: If the date format is invalid
+
+<Info>
+  The command filters out weekends (Saturday and Sunday) from the schedule display. Only weekday courses are shown.
+</Info>
+
+### Date Format
+
+The `date` parameter must follow the **DD-MM-YYYY** format:
+
+- **DD**: Day (01-31)
+- **MM**: Month (01-12)
+- **YYYY**: Full year (e.g., 2026)
+
+Examples of valid dates:
+- `02-03-2026` (March 2, 2026)
+- `25-12-2026` (December 25, 2026)
+- `01-01-2027` (January 1, 2027)
+
+### Weekend Handling
+
+If you provide a Saturday or Sunday date, the bot automatically adjusts to show the following week's schedule. This ensures you always see relevant upcoming courses.
+
+### Implementation Details
+
+The command is implemented using Discord's slash command system:
+
+```python
+@bot.tree.command(name="planning", description="Afficher le planning de la semaine (option: date)")
+@app_commands.describe(date="Date de référence au format DD-MM-YYY (ex: 02-03-2026)")
+async def planning(interaction: discord.Interaction, date: str | None = None):
+```
+
+Source: `bot.py:318-356`

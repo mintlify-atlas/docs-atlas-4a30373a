@@ -1,0 +1,443 @@
+---
+title: Docker Compose Deployment
+description: Deploy Bot Planning using Docker Compose for simplified container orchestration
+---
+
+## Overview
+
+Docker Compose provides a simpler way to manage your Bot Planning deployment by defining all configuration in a single YAML file. This approach is ideal for development and production environments where you want reproducible deployments.
+
+## Prerequisites
+
+- Docker and Docker Compose installed on your system
+- A Discord bot token from [Discord Developer Portal](https://discord.com/developers/applications)
+- Google Sheets URL for your planning/schedule (exported as CSV)
+
+## Docker Compose Setup
+
+<Tabs>
+  <Tab title="Basic Setup">
+    Create a `docker-compose.yml` file in your project directory:
+
+    ```yaml docker-compose.yml
+    version: '3.8'
+
+    services:
+      bot-planning:
+        build: .
+        container_name: bot-planning
+        env_file:
+          - .env
+        restart: always
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "10m"
+            max-file: "3"
+    ```
+
+    **Configuration explained:**
+    - `build: .` - Builds the Docker image from the current directory's Dockerfile
+    - `container_name` - Assigns a friendly name for easy management
+    - `env_file` - Loads environment variables from `.env` file
+    - `restart: always` - Automatically restarts the container on failure or system reboot
+    - `logging` - Limits log file size to prevent disk space issues
+  </Tab>
+
+  <Tab title="Production Setup">
+    For production environments with additional monitoring and resource limits:
+
+    ```yaml docker-compose.yml
+    version: '3.8'
+
+    services:
+      bot-planning:
+        build:
+          context: .
+          dockerfile: Dockerfile
+        image: bot-planning:latest
+        container_name: bot-planning
+        env_file:
+          - .env
+        restart: unless-stopped
+        deploy:
+          resources:
+            limits:
+              cpus: '0.5'
+              memory: 512M
+            reservations:
+              cpus: '0.25'
+              memory: 256M
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "10m"
+            max-file: "5"
+        healthcheck:
+          test: ["CMD-SHELL", "pgrep -f bot.py || exit 1"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
+          start_period: 40s
+    ```
+
+    **Additional production features:**
+    - `restart: unless-stopped` - Restarts automatically unless manually stopped
+    - `resources` - Limits CPU and memory usage to prevent resource exhaustion
+    - `healthcheck` - Monitors if the bot process is running
+    - Extended logging retention with 5 files instead of 3
+  </Tab>
+
+  <Tab title="Development Setup">
+    For development with live code reloading:
+
+    ```yaml docker-compose.yml
+    version: '3.8'
+
+    services:
+      bot-planning:
+        build: .
+        container_name: bot-planning-dev
+        env_file:
+          - .env
+        volumes:
+          - .:/app
+          - /app/__pycache__
+        restart: unless-stopped
+        environment:
+          - PYTHONUNBUFFERED=1
+        logging:
+          driver: "json-file"
+          options:
+            max-size: "5m"
+            max-file: "2"
+    ```
+
+    **Development features:**
+    - `volumes` - Mounts local code into container for live editing
+    - `PYTHONUNBUFFERED=1` - Shows logs in real-time without buffering
+    - Reduced logging retention for development
+  </Tab>
+</Tabs>
+
+## Environment Configuration
+
+Create a `.env` file in the same directory as your `docker-compose.yml`:
+
+```bash .env
+DISCORD_TOKEN=your_discord_bot_token_here
+EDT_PATH=https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/export?format=csv
+```
+
+<Note>
+  **Security Tip**: Never commit your `.env` file to version control. Add it to `.gitignore` to keep your credentials safe.
+</Note>
+
+## Deployment Steps
+
+<Steps>
+  <Step title="Create Discord Bot">
+    Navigate to the [Discord Developer Portal](https://discord.com/developers/applications) and create a new bot application. Copy your bot token.
+  </Step>
+
+  <Step title="Prepare Configuration Files">
+    Create both `docker-compose.yml` and `.env` files in your project directory with the appropriate configuration.
+  </Step>
+
+  <Step title="Start the Bot">
+    Launch the bot using Docker Compose:
+
+    <CodeGroup>
+      ```bash Bash
+      docker-compose up -d
+      ```
+
+      ```powershell PowerShell
+      docker-compose up -d
+      ```
+    </CodeGroup>
+
+    The `-d` flag runs the container in detached mode (background). Docker Compose will:
+    1. Build the Docker image if it doesn't exist
+    2. Create and start the container
+    3. Apply all configuration from `docker-compose.yml`
+  </Step>
+
+  <Step title="Verify Deployment">
+    Check container status:
+
+    ```bash
+    docker-compose ps
+    ```
+
+    View logs:
+
+    ```bash
+    docker-compose logs
+    ```
+
+    Follow logs in real-time:
+
+    ```bash
+    docker-compose logs -f
+    ```
+  </Step>
+</Steps>
+
+## Managing the Deployment
+
+### View Status
+
+```bash
+docker-compose ps
+```
+
+### View Logs
+
+```bash
+# All logs
+docker-compose logs
+
+# Follow logs in real-time
+docker-compose logs -f
+
+# Last 100 lines
+docker-compose logs --tail=100
+```
+
+### Stop the Bot
+
+```bash
+docker-compose stop
+```
+
+This stops the container but preserves it for later restart.
+
+### Start the Bot
+
+```bash
+docker-compose start
+```
+
+### Restart the Bot
+
+```bash
+docker-compose restart
+```
+
+### Stop and Remove Containers
+
+```bash
+docker-compose down
+```
+
+This stops and removes containers, but keeps the built image.
+
+### Stop and Remove Everything
+
+```bash
+docker-compose down --rmi all -v
+```
+
+Removes containers, images, and volumes.
+
+## Updating the Bot
+
+When you update the bot code:
+
+<Steps>
+  <Step title="Pull Latest Code">
+    If using version control:
+
+    ```bash
+    git pull
+    ```
+  </Step>
+
+  <Step title="Rebuild and Restart">
+    <CodeGroup>
+      ```bash Bash
+      docker-compose up -d --build
+      ```
+
+      ```powershell PowerShell
+      docker-compose up -d --build
+      ```
+    </CodeGroup>
+
+    The `--build` flag forces a rebuild of the image with the new code.
+  </Step>
+
+  <Step title="Verify Update">
+    Check logs to ensure the bot started correctly:
+
+    ```bash
+    docker-compose logs -f
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Docker Compose automatically handles stopping the old container and starting the new one, making updates seamless.
+</Note>
+
+## Advanced Configuration
+
+### Multiple Environment Files
+
+You can use different environment files for different deployments:
+
+```yaml docker-compose.yml
+services:
+  bot-planning:
+    build: .
+    env_file:
+      - .env
+      - .env.production
+```
+
+Then run with:
+
+```bash
+docker-compose --env-file .env.production up -d
+```
+
+### Custom Network
+
+If you need the bot to communicate with other containers:
+
+```yaml docker-compose.yml
+version: '3.8'
+
+services:
+  bot-planning:
+    build: .
+    container_name: bot-planning
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
+```
+
+### Volume for Persistent Data
+
+If your bot generates files you want to persist:
+
+```yaml docker-compose.yml
+services:
+  bot-planning:
+    build: .
+    container_name: bot-planning
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - bot-data:/app/data
+
+volumes:
+  bot-data:
+```
+
+## Restart Policies
+
+Docker Compose supports several restart policies:
+
+| Policy | Description | Use Case |
+|--------|-------------|----------|
+| `no` | Never restart | Testing only |
+| `always` | Always restart, even after manual stop | Critical production services |
+| `unless-stopped` | Restart unless manually stopped | Most production services |
+| `on-failure` | Restart only if exit code is non-zero | Services with built-in error handling |
+
+<Note>
+  **Recommended**: Use `unless-stopped` for production. This restarts the bot automatically on system reboot but respects manual stops, giving you control during maintenance.
+</Note>
+
+## Troubleshooting
+
+### Service Fails to Start
+
+View detailed logs:
+
+```bash
+docker-compose logs bot-planning
+```
+
+Check service status:
+
+```bash
+docker-compose ps
+```
+
+### Configuration Changes Not Applied
+
+Rebuild the image:
+
+```bash
+docker-compose up -d --build --force-recreate
+```
+
+### Port Conflicts
+
+If you need to expose ports and encounter conflicts, modify `docker-compose.yml`:
+
+```yaml
+services:
+  bot-planning:
+    ports:
+      - "8080:8080"  # host:container
+```
+
+### Environment Variables Not Loading
+
+Verify `.env` file location and format:
+
+```bash
+cat .env
+```
+
+Ensure no spaces around the `=` sign:
+
+```bash
+# Correct
+DISCORD_TOKEN=abc123
+
+# Incorrect
+DISCORD_TOKEN = abc123
+```
+
+### Resource Limits
+
+If the bot is using too many resources, add limits:
+
+```yaml
+services:
+  bot-planning:
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+```
+
+Note: Use `docker compose` (v2) instead of `docker-compose` (v1) for deploy section to work in standalone mode.
+
+## Comparison: Docker vs Docker Compose
+
+| Feature | Docker | Docker Compose |
+|---------|--------|----------------|
+| Command length | Long, complex | Short, simple |
+| Configuration | Command-line arguments | YAML file |
+| Reproducibility | Manual documentation needed | Self-documented |
+| Multi-container | Complex | Easy |
+| Environment management | `--env-file` flag | Built-in support |
+| Best for | Simple, one-off deployments | Production, team projects |
+
+<Note>
+  **Recommendation**: Use Docker Compose for any deployment you plan to maintain long-term. The configuration file serves as documentation and makes deployments consistent across environments.
+</Note>
